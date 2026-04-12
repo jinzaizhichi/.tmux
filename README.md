@@ -119,15 +119,51 @@ prefix 键为 `Ctrl+b`（默认）。
 ~/.tmux/.tmux.conf.local  # 同上，repo 里的副本
 ```
 
-## 更新
+## 分支说明
+
+本仓库维护两个分支：
+
+| 分支 | 用途 |
+|------|------|
+| `master` | 与上游 [oh-my-tmux](https://github.com/gpakosz/.tmux) 保持同步，不做个人修改 |
+| `personal` | 个人使用分支，在 master 基础上叠加个人配置（本分支）|
+
+## 更新工作流
+
+### 同步上游更新
 
 ```bash
-# 更新 oh-my-tmux 框架
-git -C ~/.tmux pull
+# 1. 切到 master，拉取上游最新
+git checkout master
+git pull origin master
 
-# 更新 tpm 插件
-# 在 tmux 里按 prefix + U
+# 2. 切回 personal，rebase 到新的 master
+git checkout personal
+git rebase master
+
+# 3. 冲突时保留个人版本（README、install.sh、.tmux.conf.local）
+# git checkout --theirs <file>
+# git add <file>
+# git rebase --continue
+
+# 4. 推送
+git push origin personal --force-with-lease
 ```
+
+### 修改个人配置
+
+```bash
+# 在 personal 分支上修改、提交即可
+git checkout personal
+# ... 修改 .tmux.conf.local 等
+git add .
+git commit -m "feat: xxx"
+git push origin personal
+```
+
+### 更新 tpm 插件
+
+在 tmux 里按 `prefix + U`。
 
 ## Neovim 集成
 
