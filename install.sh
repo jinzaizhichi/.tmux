@@ -1,189 +1,89 @@
-#!/bin/bash
-# Oh my tmux!
-# 💛🩷💙🖤❤️🤍
-# https://github.com/gpakosz/.tmux
-# (‑●‑●)> dual licensed under the WTFPL v2 license and the MIT license,
-#         without any warranty.
-#         Copyright 2012— Gregory Pakosz (@gpakosz).
-#
-# ------------------------------------------------------------------------------
-# 🚨 PLEASE REVIEW THE CONTENT OF THIS FILE BEFORE BLINDING PIPING TO CURL
-# ------------------------------------------------------------------------------
-{
-if [ ${EUID:-$(id -u)} -eq 0 ]; then
-  printf '❌ Do not execute this script as root!\n' >&2 && exit 1
+#!/usr/bin/env bash
+# oh-my-tmux 安装脚本
+# 用途：在新机器上一键配置 tmux 环境（WSL2 / Linux）
+
+set -e
+
+REPO_URL="git@github.com:jinzaizhichi/.tmux.git"
+TMUX_DIR="$HOME/.tmux"
+TMUX_CONF="$HOME/.tmux.conf"
+TMUX_CONF_LOCAL="$HOME/.tmux.conf.local"
+TPM_DIR="$HOME/.tmux/plugins/tpm"
+
+# 颜色输出
+info()    { echo -e "\033[1;34m[INFO]\033[0m $*"; }
+success() { echo -e "\033[1;32m[OK]\033[0m $*"; }
+warn()    { echo -e "\033[1;33m[WARN]\033[0m $*"; }
+error()   { echo -e "\033[1;31m[ERROR]\033[0m $*"; exit 1; }
+
+# 1. 检查 tmux 是否安装
+if ! command -v tmux &>/dev/null; then
+    error "tmux 未安装。请先安装 tmux：\n  Arch: sudo pacman -S tmux\n  Ubuntu: sudo apt install tmux"
+fi
+info "tmux 版本: $(tmux -V)"
+
+# 2. 克隆或更新 oh-my-tmux repo
+if [ -d "$TMUX_DIR/.git" ]; then
+    info "~/.tmux 已存在，拉取最新代码..."
+    git -C "$TMUX_DIR" pull --ff-only || warn "git pull 失败，跳过更新"
+else
+    info "克隆 oh-my-tmux..."
+    git clone "$REPO_URL" "$TMUX_DIR"
 fi
 
-if [ -z "$BASH_VERSION" ]; then
-  printf '❌ This installation script requires bash\n' >&2 && exit 1
+# 3. 创建符号链接（~/.tmux.conf -> ~/.tmux/.tmux.conf）
+if [ -L "$TMUX_CONF" ]; then
+    success "符号链接已存在: $TMUX_CONF"
+elif [ -f "$TMUX_CONF" ]; then
+    warn "~/.tmux.conf 是普通文件，备份为 ~/.tmux.conf.bak"
+    mv "$TMUX_CONF" "$TMUX_CONF.bak"
+    ln -sf "$TMUX_DIR/.tmux.conf" "$TMUX_CONF"
+    success "符号链接已创建: $TMUX_CONF -> $TMUX_DIR/.tmux.conf"
+else
+    ln -sf "$TMUX_DIR/.tmux.conf" "$TMUX_CONF"
+    success "符号链接已创建: $TMUX_CONF -> $TMUX_DIR/.tmux.conf"
 fi
 
-if ! tmux -V >/dev/null 2>&1; then
-  printf '❌ tmux is not installed\n' >&2 && exit 1
-fi
-
-is_true() {
-  case "$1" in
-    true|yes|1)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-if ! is_true "$PERMISSIVE" && [ -n "$TMUX" ]; then
-  printf '❌ tmux is currently running, please terminate the server\n' >&2 && exit 1
-fi
-
-install() {
-  printf '🎢 Installing Oh my tmux! Buckle up!\n' >&2
-  printf '\n' >&2
-  now=$(date +'%Y%d%m%S')
-
-  for dir in "${XDG_CONFIG_HOME:-$HOME/.config}/tmux" "$HOME/.tmux"; do
-    if [ -d "$dir" ]; then
-      printf '⚠️  %s directory exists, making a backup → %s\n' "${dir/#"$HOME"/'~'}" "${dir/#"$HOME"/'~'}.$now" >&2
-      if ! is_true "$DRY_RUN"; then
-        mv "$dir" "$dir.$now"
-      fi
+# 4. 部署 .tmux.conf.local（个人配置）
+if [ -f "$TMUX_CONF_LOCAL" ]; then
+    # 检查是否与 repo 版本相同
+    if diff -q "$TMUX_DIR/.tmux.conf.local" "$TMUX_CONF_LOCAL" &>/dev/null; then
+        success "~/.tmux.conf.local 已是最新"
+    else
+        warn "~/.tmux.conf.local 与 repo 版本不同，备份为 ~/.tmux.conf.local.bak"
+        cp "$TMUX_CONF_LOCAL" "$TMUX_CONF_LOCAL.bak"
+        cp "$TMUX_DIR/.tmux.conf.local" "$TMUX_CONF_LOCAL"
+        success "~/.tmux.conf.local 已更新"
     fi
-  done
-
-  for conf in "$HOME/.tmux.conf" \
-              "$HOME/.tmux.conf.local" \
-              "${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf" \
-              "${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf.local"; do
-    if [ -f "$conf" ]; then
-      if [ -L "$conf" ]; then
-        printf '⚠️  %s symlink exists, removing → 🗑️\n' "${conf/#"$HOME"/'~'}" >&2
-        if ! is_true "$DRY_RUN"; then
-          rm -f "$conf"
-        fi
-      else
-        printf '⚠️  %s file exists, making a backup -> %s\n' "${conf/#"$HOME"/'~'}" "${conf/#"$HOME"/'~'}.$now" >&2
-        if ! is_true "$DRY_RUN"; then
-          mv "$conf" "$conf.$now"
-        fi
-      fi
-    fi
-  done
-
-  if [ -d "${XDG_CONFIG_HOME:-$HOME/.config}" ]; then
-    mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/tmux"
-    TMUX_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"
-  else
-    TMUX_CONF="$HOME/.tmux.conf"
-  fi
-  TMUX_CONF_LOCAL="$TMUX_CONF.local"
-
-  OH_MY_TMUX_CLONE_PATH="${XDG_DATA_HOME:-$HOME/.local/share}/tmux/oh-my-tmux"
-  if [ -d "$OH_MY_TMUX_CLONE_PATH" ]; then
-    printf '⚠️  %s exists, making a backup\n' "${OH_MY_TMUX_CLONE_PATH/#"$HOME"/'~'}" >&2
-    printf '%s → %s\n' "${OH_MY_TMUX_CLONE_PATH/#"$HOME"/'~'}" "${OH_MY_TMUX_CLONE_PATH/#"$HOME"/'~'}.$now" >&2
-    if ! is_true "$DRY_RUN"; then
-      mv "$OH_MY_TMUX_CLONE_PATH" "$OH_MY_TMUX_CLONE_PATH.$now"
-    fi
-  fi
-
-  printf '\n'
-  printf '✅ Using %s\n' "${OH_MY_TMUX_CLONE_PATH/#"$HOME"/'~'}" >&2
-  printf '✅ Using %s\n' "${TMUX_CONF/#"$HOME"/'~'}" >&2
-  printf '✅ Using %s\n' "${TMUX_CONF_LOCAL/#"$HOME"/'~'}" >&2
-
-  printf '\n'
-  OH_MY_TMUX_REPOSITORY=${OH_MY_TMUX_REPOSITORY:-https://github.com/gpakosz/.tmux.git}
-  printf '⬇️  Cloning Oh my tmux! repository...\n' >&2
-  if ! is_true "$DRY_RUN"; then
-    mkdir -p "$(dirname "$OH_MY_TMUX_CLONE_PATH")"
-    if ! git clone -q --single-branch "$OH_MY_TMUX_REPOSITORY" "$OH_MY_TMUX_CLONE_PATH"; then
-      printf '❌ Failed\n' >&2 && exit 1
-    fi
-  fi
-
-  printf '\n'
-  if is_true "$DRY_RUN" || ln -s -f "$OH_MY_TMUX_CLONE_PATH/.tmux.conf" "$TMUX_CONF"; then
-    printf '✅ Symlinked %s → %s\n' "${TMUX_CONF/#"$HOME"/'~'}" "${OH_MY_TMUX_CLONE_PATH/#"$HOME"/'~'}/.tmux.conf" >&2
-  fi
-  if is_true "$DRY_RUN" || cp "$OH_MY_TMUX_CLONE_PATH/.tmux.conf.local" "$TMUX_CONF_LOCAL"; then
-    printf '✅ Copied %s → %s\n' "${OH_MY_TMUX_CLONE_PATH/#"$HOME"/'~'}/.tmux.conf.local" "${TMUX_CONF_LOCAL/#"$HOME"/'~'}" >&2
-  fi
-
-  tmux() {
-    ${TMUX_PROGRAM:-tmux} ${TMUX_SOCKET:+-S "$TMUX_SOCKET"} "$@"
-  }
-  if ! is_true "$DRY_RUN" && [ -n "$TMUX" ]; then
-    tmux set-environment -g TMUX_CONF "$TMUX_CONF"
-    tmux set-environment -g TMUX_CONF_LOCAL "$TMUX_CONF_LOCAL"
-    tmux source "$TMUX_CONF"
-  fi
-
-  if [ -n "$TMUX" ]; then
-    printf '\n' >&2
-    printf '⚠️  Installed Oh my tmux! while tmux was running...\n' >&2
-    printf '→ Existing sessions have outdated environment variables\n' >&2
-    printf '  • TMUX_CONF\n' >&2
-    printf '  • TMUX_CONF_LOCAL\n' >&2
-    printf '  • TMUX_PROGRAM\n' >&2
-    printf '  • TMUX_SOCKET\n' >&2
-    printf '→ Some other things may not work 🤷\n' >&2
-  fi
-
-  printf '\n' >&2
-  printf '🎉 Oh my tmux! successfully installed 🎉\n' >&2
-}
-
-if [ -p /dev/stdin ]; then
-  printf '✋ STOP\n' >&2
-  printf '   🤨 It looks like you are piping commands from the internet to your shell!\n' >&2
-  printf "   🙏 Please take the time to review what's going to be executed...\n" >&2
-
-  (
-    printf '\n'
-
-    self() {
-      printf '# Oh my tmux!\n'
-      printf '# 💛🩷💙🖤❤️🤍\n'
-      printf '# https://github.com/gpakosz/.tmux\n'
-      printf '\n'
-
-      declare -f install
-    }
-
-    while :; do
-      printf '   Do you want to review the content? [Yes/No/Cancel] > ' >&2
-      read -r answer >&2
-      case $(printf '%s\n' "$answer" | tr '[:upper:]' '[:lower:]') in
-        y|yes)
-          case "$(command -v bat)${VISUAL:-${EDITOR}}" in
-            *bat*)
-              self | LESS='' bat --paging always --file-name install.sh
-              ;;
-            *vim*) # vim, nvim, neovim ... compatible
-              self | ${VISUAL:-${EDITOR}} -c ':set syntax=tmux' -R -
-              ;;
-            *)
-              tput smcup
-              clear
-              self | LESS='-R' ${PAGER:-less}
-              tput rmcup
-              ;;
-          esac
-          break
-          ;;
-        n|no)
-          break
-          ;;
-        c|cancel)
-          printf '\n'
-          printf '⛔️ Installation aborted...\n' >&2 && exit 1
-          ;;
-      esac
-    done
-  ) < /dev/tty || exit 1
-  printf '\n'
+else
+    cp "$TMUX_DIR/.tmux.conf.local" "$TMUX_CONF_LOCAL"
+    success "~/.tmux.conf.local 已部署"
 fi
 
-install
-}
+# 5. 安装 tpm（Tmux Plugin Manager）
+if [ -d "$TPM_DIR/.git" ]; then
+    success "tpm 已安装"
+else
+    info "安装 tpm..."
+    git clone https://github.com/tmux-plugins/tpm "$TPM_DIR"
+    success "tpm 安装完成"
+fi
+
+# 6. 完成提示
+echo ""
+success "安装完成！"
+echo ""
+echo "下一步："
+echo "  1. 启动或重载 tmux：tmux source ~/.tmux.conf"
+echo "  2. 安装插件：在 tmux 中按 <prefix> + I（大写 i）"
+echo "  3. 等待插件安装完毕后重新加载配置"
+echo ""
+echo "已启用的插件："
+echo "  - tmux-sensible        合理默认值"
+echo "  - tmux-resurrect       保存/恢复 session（prefix + Ctrl-s / Ctrl-r）"
+echo "  - tmux-continuum       自动保存（每 15 分钟）"
+echo "  - vim-tmux-navigator   Neovim ↔ tmux 无缝切换（Ctrl+h/j/k/l）"
+echo ""
+echo "vim-tmux-navigator 提示："
+echo "  Neovim 侧需要安装对应插件，lazy.nvim 配置："
+echo '  { "christoomey/vim-tmux-navigator" }'
